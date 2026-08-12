@@ -99,5 +99,14 @@ docker compose -f docker/docker-compose.yml up -d
 
 ---
 
+## Acknowledgments
+This project relies heavily on the excellent work of the open-source community. We would like to express our gratitude to the following projects:
+
+* **[Mandiant capa](https://github.com/mandiant/capa)**: For their powerful automated malware capability detection engine and comprehensive [capa-rules](https://github.com/mandiant/capa-rules).
+* **[Rizin](https://github.com/rizinorg/rizin)**: For providing an extremely fast and robust binary analysis framework.
+* **[rz-ghidra](https://github.com/rizinorg/rz-ghidra)**: For bringing the formidable Ghidra decompiler to the Rizin ecosystem.
+
+---
+
 ## License
 This project is licensed under the [MIT License](LICENSE).
