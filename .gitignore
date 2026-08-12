@@ -89,3 +89,5 @@ Thumbs.db
 
 # Malware samples / test binaries
 samples/
+# Internal planning/scratch docs (not part of the public codebase)
+IMPROVEMENT_PLAN.md
