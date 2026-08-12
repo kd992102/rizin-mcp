@@ -473,6 +473,63 @@ def search_strings(query: str = "") -> str:
         return json.dumps({"status": "error", "message": f"字串搜尋失敗: {str(e)}"})
 
 @server.tool(
+    name="get_xrefs",
+    description="查找與分析指定函式或位址的交叉引用與呼叫依賴關係 (Xrefs)。支援傳入位址/名稱或全域查詢，回傳格式包含 [{'type': 'CALL', 'from': '0x401000', 'to': '0x402000'}]。"
+)
+def get_xrefs(address_or_name: str = "", xref_type: str = "ALL", limit: int = 100) -> str:
+    if CURRENT_RZ is None:
+        return json.dumps({"status": "error", "message": "尚未開啟並分析任何檔案，請先呼叫 open_and_analyze。"})
+    
+    try:
+        with suppress_stderr():
+            if address_or_name:
+                safe_target = sanitize_symbol_or_address(address_or_name)
+                CURRENT_RZ.cmd(f"s {safe_target}")
+                raw = CURRENT_RZ.cmd("afxj")
+                if not raw or raw.strip() in ["", "[]"] or "ERROR" in raw:
+                    t_raw = CURRENT_RZ.cmd("axtj")
+                    f_raw = CURRENT_RZ.cmd("axfj")
+                    t_list = json.loads(t_raw) if t_raw and "ERROR" not in t_raw else []
+                    f_list = json.loads(f_raw) if f_raw and "ERROR" not in f_raw else []
+                    items = t_list + f_list
+                else:
+                    items = json.loads(raw)
+            else:
+                raw = CURRENT_RZ.cmd("axlj")
+                items = json.loads(raw) if raw and "ERROR" not in raw else []
+        
+        type_filter = xref_type.strip().upper()
+        xrefs = []
+        for item in items:
+            f_val = item.get("from")
+            t_val = item.get("to")
+            x_type = str(item.get("type", "UNKNOWN")).upper()
+            
+            if type_filter != "ALL" and x_type != type_filter:
+                continue
+                
+            from_addr = hex(f_val) if isinstance(f_val, int) else str(f_val)
+            to_addr = hex(t_val) if isinstance(t_val, int) else str(t_val)
+            
+            xrefs.append({
+                "type": x_type,
+                "from": from_addr,
+                "to": to_addr
+            })
+            
+            if len(xrefs) >= limit:
+                break
+                
+        return json.dumps({
+            "status": "success",
+            "target": address_or_name if address_or_name else "ALL",
+            "count": len(xrefs),
+            "xrefs": xrefs
+        }, ensure_ascii=False, indent=2)
+    except Exception as e:
+        return json.dumps({"status": "error", "message": f"查詢交叉引用失敗: {str(e)}"})
+
+@server.tool(
     name="execute_rizin_command",
     description="[高權限工具] 直接對 Rizin 執行自訂指令 (例如 `px 64 @ 0x140001000`, `afl` 等)。"
 )
