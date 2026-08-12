@@ -1,0 +1,10 @@
+.git
+.venv
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache
+.analysis_cache
+rizin-win-installer-clang_cl-64
+.DS_Store
