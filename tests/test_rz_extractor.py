@@ -11,7 +11,7 @@ from rizin_mcp.rz_extractor import RizinFeatureExtractor
 
 @contextlib.contextmanager
 def suppress_stderr():
-    """抑制 C 層與 stderr 輸出，保持控制台輸出乾淨"""
+    """Suppress C-level and stderr output to keep the console output clean"""
     try:
         stderr_fd = sys.stderr.fileno()
         saved_stderr_fd = os.dup(stderr_fd)
@@ -29,7 +29,7 @@ def suppress_stderr():
             pass
 
 
-# 確保 PATH 包含專案內建的 Rizin
+# Ensure PATH includes the built-in Rizin for the project
 LOCAL_RIZIN_BIN = os.path.abspath("rizin-win-installer-clang_cl-64/bin")
 if os.path.exists(LOCAL_RIZIN_BIN):
     os.environ["PATH"] = LOCAL_RIZIN_BIN + os.path.pathsep + os.environ.get("PATH", "")
@@ -72,5 +72,3 @@ for r_name in list(matches.keys())[:15]:
 
 with suppress_stderr():
     rz.quit()
-
-

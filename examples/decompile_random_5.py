@@ -22,19 +22,19 @@ target_file = sys.argv[1] if len(sys.argv) > 1 else "sample.exe"
 json_file = "functions.json"
 
 if not os.path.exists(target_file):
-    print(f"提示: 找不到測試檔案 '{target_file}'。")
-    print("用法: python decompile_random_5.py <path_to_binary>")
+    print(f"Info: Cannot find test file '{target_file}'.")
+    print("Usage: python decompile_random_5.py <path_to_binary>")
     sys.exit(1)
 
 if not os.path.exists(json_file):
-    print(f"錯誤: 找不到 {json_file}，請先執行 rizin_test.py 產生！")
+    print(f"Error: Cannot find {json_file}, please run rizin_test.py first to generate it!")
     sys.exit(1)
 
 with open(json_file, "r", encoding="utf-8") as f:
     all_functions = json.load(f)
 
 if not all_functions:
-    print("錯誤: functions.json 中沒有任何函式！")
+    print("Error: No functions found in functions.json!")
     sys.exit(1)
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -48,9 +48,9 @@ sleigh_path = os.path.join(PROJECT_ROOT, "rizin-win-installer-clang_cl-64", "lib
 num_to_sample = min(5, len(all_functions))
 selected_func_names = random.sample(list(all_functions.keys()), num_to_sample)
 
-print(f"=== 從 {json_file} 隨機挑選 {num_to_sample} 個函式進行反編譯 ===")
+print(f"=== Randomly selecting {num_to_sample} functions from {json_file} for decompilation ===")
 for name in selected_func_names:
-    print(f"  - {name} (位址: {all_functions[name]['address']})")
+    print(f"  - {name} (Address: {all_functions[name]['address']})")
 print("=" * 60)
 
 decompiled_results = {}
@@ -64,7 +64,7 @@ with suppress_stderr():
 
 for name in selected_func_names:
     addr = all_functions[name]["address"]
-    print(f"\n[+] 正在反編譯: {name} ({addr})...")
+    print(f"\n[+] Decompiling: {name} ({addr})...")
     
     with suppress_stderr():
         rz.cmd(f"s {addr}")
@@ -87,4 +87,4 @@ output_file = "decompiled_5.json"
 with open(output_file, "w", encoding="utf-8") as f:
     json.dump(decompiled_results, f, indent=4, ensure_ascii=False)
 
-print(f"\n=== 所有反編譯結果已成功儲存至 {output_file} ===")
+print(f"\n=== All decompilation results successfully saved to {output_file} ===")

@@ -16,7 +16,7 @@ import capa.rules
 import capa.main
 from rizin_mcp.rz_extractor import RizinFeatureExtractor
 
-# 自動定位與設定 Rizin, Ghidra Sleigh 與 Capa 規則路徑
+# Automatically locate and setup Rizin, Ghidra Sleigh, and Capa rules paths
 PACKAGE_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.abspath(os.path.join(PACKAGE_DIR, "..", ".."))
 
@@ -27,7 +27,7 @@ if os.path.exists(LOCAL_RIZIN_BIN):
 SLEIGH_PATH = os.path.join(PROJECT_ROOT, "rizin-win-installer-clang_cl-64", "lib", "rizin", "plugins", "rz_ghidra_sleigh")
 CAPA_RULES_PATH = os.path.join(PROJECT_ROOT, "capa-rules")
 
-# 分析結果持久化快取目錄
+# Persistent cache directory for analysis results
 ANALYSIS_CACHE_DIR = os.path.join(PROJECT_ROOT, ".analysis_cache")
 os.makedirs(ANALYSIS_CACHE_DIR, exist_ok=True)
 
@@ -35,7 +35,7 @@ ALLOWED_BASE_DIR = os.path.abspath(os.getcwd())
 
 
 def get_file_sha256(file_path: str) -> str:
-    """計算檔案的 SHA-256 雜湊值作為快取 Key"""
+    """Calculate SHA-256 hash of the file as cache key"""
     h = hashlib.sha256()
     with open(file_path, "rb") as f:
         while chunk := f.read(65536):
@@ -44,33 +44,33 @@ def get_file_sha256(file_path: str) -> str:
 
 
 def get_cache_file_path(file_path: str) -> str:
-    """根據檔案 SHA-256 雜湊生成快取檔案路徑"""
+    """Generate cache file path based on the file's SHA-256 hash"""
     file_sha256 = get_file_sha256(file_path)
     cache_filename = f"{file_sha256}_full.json"
     return os.path.join(ANALYSIS_CACHE_DIR, cache_filename)
 
 def get_safe_path(user_path: str) -> str:
-    """驗證與轉換安全的檔案路徑，防止 Path Traversal 攻擊"""
+    """Validate and resolve safe file paths to prevent Path Traversal attacks"""
     target_path = os.path.abspath(os.path.join(ALLOWED_BASE_DIR, user_path))
     if not os.path.exists(target_path):
         abs_user_path = os.path.abspath(user_path)
         if os.path.exists(abs_user_path):
             return abs_user_path
-        raise FileNotFoundError(f"找不到指定的檔案: {user_path}")
+        raise FileNotFoundError(f"Cannot find the specified file: {user_path}")
     return target_path
 
 def sanitize_symbol_or_address(identifier: str) -> str:
-    """清理位址或符號名稱，防止在 Rizin 命令列中注入多重指令 (Command Injection)"""
+    """Sanitize address or symbol name to prevent Command Injection in Rizin command line"""
     cleaned = identifier.strip()
     if not re.match(r"^[a-zA-Z0-9_\.\+\-]+$", cleaned):
-        raise ValueError(f"安全警報：不合法或包含潛在危險字元的位址/符號名稱: '{identifier}'")
+        raise ValueError(f"Security Alert: Invalid or potentially dangerous characters in address/symbol name: '{identifier}'")
     return cleaned
 
 SAVED_CONSOLE_FD: Optional[int] = None
 
 
 def log_info(msg: str):
-    """將乾淨透明的 Log 寫入真實主控台，讓使用者在 Terminal 或 Inspector 中及時觀察進度"""
+    """Write clean logs to the real console, allowing users to observe progress in Terminal or Inspector"""
     formatted = f"[rizin-mcp] {msg}\n"
     if SAVED_CONSOLE_FD is not None:
         try:
@@ -87,7 +87,7 @@ def log_info(msg: str):
 
 @contextlib.contextmanager
 def suppress_stderr():
-    """抑制 C 層與 stderr 雜訊輸出，同時保留 SAVED_CONSOLE_FD 給 log_info 使用"""
+    """Suppress C-level and stderr noise output, while preserving SAVED_CONSOLE_FD for log_info to use"""
     global SAVED_CONSOLE_FD
     saved_stderr_fd = None
     devnull = None
@@ -113,17 +113,17 @@ def suppress_stderr():
         except Exception:
             pass
 
-# 全域 Session 物件與快取的 RuleSet
+# Global Session object and cached RuleSet
 CURRENT_RZ: Optional[rzpipe.open] = None
 CURRENT_FILE_PATH: Optional[str] = None
 CACHED_RULESET: Optional[capa.rules.RuleSet] = None
 
 def get_capa_ruleset() -> capa.rules.RuleSet:
-    """快取並載入 capa-rules 規則庫 (相容 capa 9.x pathlib.Path 需求)"""
+    """Cache and load capa-rules repository (compatible with capa 9.x pathlib.Path requirement)"""
     global CACHED_RULESET
     if CACHED_RULESET is None:
         if not os.path.exists(CAPA_RULES_PATH):
-            raise FileNotFoundError(f"找不到 capa-rules 規則庫目錄: {CAPA_RULES_PATH}")
+            raise FileNotFoundError(f"Cannot find capa-rules directory: {CAPA_RULES_PATH}")
         
         rule_paths = []
         for root, _, files in os.walk(CAPA_RULES_PATH):
@@ -139,22 +139,22 @@ def get_capa_ruleset() -> capa.rules.RuleSet:
             
     return CACHED_RULESET
 
-# 初始化 MCPServer
+# Initialize MCPServer
 server = MCPServer("rizin-analyzer")
 
 @server.tool(
     name="open_and_analyze",
-    description="開啟並自動分析二進位檔案。在對檔案進行任何反編譯、反組譯或查詢前必須先呼叫此工具。"
+    description="Open and automatically analyze a binary file. This tool must be called before performing any decompilation, disassembly, or queries on the file."
 )
 def open_and_analyze(file_path: str, analyze_level: str = "aaa") -> str:
     global CURRENT_RZ, CURRENT_FILE_PATH
     try:
         safe_path = get_safe_path(file_path)
         filename = os.path.basename(safe_path)
-        log_info(f"[INFO] 正在載入二進位檔案: {filename}")
+        log_info(f"[INFO] Loading binary file: {filename}")
         
         if CURRENT_RZ is not None:
-            log_info("[INFO] 關閉前一次 Rizin Session...")
+            log_info("[INFO] Closing previous Rizin Session...")
             try:
                 CURRENT_RZ.quit()
             except Exception:
@@ -165,7 +165,7 @@ def open_and_analyze(file_path: str, analyze_level: str = "aaa") -> str:
         import time
         t0 = time.time()
         level = analyze_level if analyze_level in ["a", "aa", "aaa", "aaaa"] else "aaa"
-        log_info(f"[INFO] 啟動 Rizin 分析引擎 (分析層級: '{level}')...")
+        log_info(f"[INFO] Starting Rizin analysis engine (Analysis level: '{level}')...")
         
         with suppress_stderr():
             rz = rzpipe.open(safe_path, flags=["-e", "bin.cache=true"])
@@ -184,11 +184,11 @@ def open_and_analyze(file_path: str, analyze_level: str = "aaa") -> str:
         CURRENT_RZ = rz
         CURRENT_FILE_PATH = safe_path
         
-        log_info(f"[SUCCESS] Rizin 分析完成！共識別出 {len(funcs)} 個函式，歷時 {t1 - t0:.2f} 秒。")
+        log_info(f"[SUCCESS] Rizin analysis completed! Identified {len(funcs)} functions, took {t1 - t0:.2f} seconds.")
         
         return json.dumps({
             "status": "success",
-            "message": f"成功載入並分析檔案: {filename}",
+            "message": f"Successfully loaded and analyzed file: {filename}",
             "file_path": safe_path,
             "architecture": info.get("arch"),
             "format": info.get("bintype"),
@@ -198,44 +198,44 @@ def open_and_analyze(file_path: str, analyze_level: str = "aaa") -> str:
         }, ensure_ascii=False, indent=2)
 
     except Exception as e:
-        log_info(f"[ERROR] 分析失敗: {str(e)}")
-        return json.dumps({"status": "error", "message": f"分析失敗: {str(e)}"}, ensure_ascii=False)
+        log_info(f"[ERROR] Analysis failed: {str(e)}")
+        return json.dumps({"status": "error", "message": f"Analysis failed: {str(e)}"}, ensure_ascii=False)
 
 @server.tool(
     name="run_capa_analysis",
-    description="【極速 Rizin Extractor 模式】利用已由 open_and_analyze 分析好的 Rizin Session 比對 capa-rules 識別惡意能力。必須先呼叫 open_and_analyze。會完整分析所有函式直至完成，自動支援磁碟快取，若已分析過直接讀檔回傳。"
+    description="[Ultra-fast Rizin Extractor Mode] Use the pre-analyzed Rizin Session from open_and_analyze to match capa-rules and identify malicious capabilities. open_and_analyze must be called first. It fully analyzes all functions until completion, automatically supports disk caching, and directly returns cached results if already analyzed."
 )
 def run_capa_analysis(force_reanalysis: bool = False) -> str:
     global CURRENT_RZ, CURRENT_FILE_PATH
     
     if CURRENT_RZ is None or not CURRENT_FILE_PATH:
-        log_info("[ERROR] 尚未開啟並分析任何檔案！請先呼叫 open_and_analyze。")
-        return json.dumps({"status": "error", "message": "尚未開啟並分析任何檔案，請先呼叫 open_and_analyze 開啟檔案。"}, ensure_ascii=False)
+        log_info("[ERROR] No file has been opened and analyzed yet! Please call open_and_analyze first.")
+        return json.dumps({"status": "error", "message": "No file has been opened and analyzed. Please call open_and_analyze first."}, ensure_ascii=False)
 
     target_path = CURRENT_FILE_PATH
     filename = os.path.basename(target_path)
-    log_info(f"[INFO] 開始準備對 {filename} 進行 capa 惡意能力特徵比對...")
+    log_info(f"[INFO] Preparing capa malicious capability matching for {filename}...")
 
-    # 1. 檢查快取：若未指定強制重新分析，先檢查快取檔
+    # 1. Check cache: If forced re-analysis is not specified, check the cache file first
     cache_file = get_cache_file_path(target_path)
     cache_name = os.path.basename(cache_file)
-    log_info(f"[CACHE] 檢查磁碟快取檔 ({cache_name})...")
+    log_info(f"[CACHE] Checking disk cache file ({cache_name})...")
     if not force_reanalysis and os.path.exists(cache_file):
         try:
-            log_info(f"[CACHE] 成功命中磁碟快取 ({cache_name})！直接讀取分析結果...")
+            log_info(f"[CACHE] Disk cache hit ({cache_name})! Directly reading analysis results...")
             with open(cache_file, "r", encoding="utf-8") as f:
                 cached_data = json.load(f)
             cached_data["cached"] = True
-            cached_data["message"] = "讀取快取分析結果成功 (Cached)"
+            cached_data["message"] = "Successfully read cached analysis results"
             return json.dumps(cached_data, ensure_ascii=False, indent=2)
         except Exception:
-            log_info("[WARN] 快取檔讀取異常，將重新進行比對...")
+            log_info("[WARN] Cache file read exception, will re-analyze...")
 
-    # 2. 使用由 open_and_analyze 建立的 CURRENT_RZ 進行完整 capa 特徵比對 (無限制分析所有函式直至完成)
+    # 2. Use CURRENT_RZ established by open_and_analyze for full capa feature matching (no function limit until completion)
     try:
         import time
         t0 = time.time()
-        log_info("[INFO] 載入 capa 規則庫與初始化 RizinFeatureExtractor (無數量限制模式)...")
+        log_info("[INFO] Loading capa ruleset and initializing RizinFeatureExtractor (unlimited mode)...")
         rules = get_capa_ruleset()
         
         with suppress_stderr():
@@ -295,7 +295,7 @@ def run_capa_analysis(force_reanalysis: bool = False) -> str:
             })
             
         t1 = time.time()
-        log_info(f"[SUCCESS] capa 惡意能力特徵比對完成！共比對出 {len(result_capabilities)} 項惡意能力，歷時 {t1 - t0:.2f} 秒。")
+        log_info(f"[SUCCESS] capa malicious capability matching completed! Matched {len(result_capabilities)} capabilities, took {t1 - t0:.2f} seconds.")
 
         response_payload = {
             "status": "success",
@@ -306,20 +306,20 @@ def run_capa_analysis(force_reanalysis: bool = False) -> str:
             "capabilities": result_capabilities
         }
 
-        # 3. 將分析結果寫入磁碟快取
+        # 3. Write analysis results to disk cache
         try:
             with open(cache_file, "w", encoding="utf-8") as f:
                 json.dump(response_payload, f, ensure_ascii=False, indent=2)
-            log_info(f"[CACHE] 已將分析結果寫入磁碟快取檔: {cache_name}")
+            log_info(f"[CACHE] Analysis results written to disk cache file: {cache_name}")
         except Exception as e:
-            log_info(f"[WARN] 寫入分析快取失敗: {e}")
+            log_info(f"[WARN] Failed to write analysis cache: {e}")
 
         return json.dumps(response_payload, ensure_ascii=False, indent=2)
 
     except Exception as e:
         tb = traceback.format_exc()
-        log_info(f"[ERROR] capa 分析失敗: {str(e)}")
-        return json.dumps({"status": "error", "message": f"capa 分析失敗: {str(e)}", "traceback": tb}, ensure_ascii=False, indent=2)
+        log_info(f"[ERROR] capa analysis failed: {str(e)}")
+        return json.dumps({"status": "error", "message": f"capa analysis failed: {str(e)}", "traceback": tb}, ensure_ascii=False, indent=2)
 
 
 
@@ -327,11 +327,11 @@ def run_capa_analysis(force_reanalysis: bool = False) -> str:
 
 @server.tool(
     name="list_functions",
-    description="列出目前檔案中所有已被分析出來的函式。支援用關鍵字過濾函式名稱或位址。"
+    description="List all functions identified in the current file. Supports filtering by function name or address using a keyword."
 )
 def list_functions(filter_keyword: str = "") -> str:
     if CURRENT_RZ is None:
-        return json.dumps({"status": "error", "message": "尚未開啟並分析任何檔案，請先呼叫 open_and_analyze。"})
+        return json.dumps({"status": "error", "message": "No file has been opened and analyzed. Please call open_and_analyze first."})
     
     try:
         with suppress_stderr():
@@ -359,15 +359,15 @@ def list_functions(filter_keyword: str = "") -> str:
             "functions": result
         }, ensure_ascii=False, indent=2)
     except Exception as e:
-        return json.dumps({"status": "error", "message": f"取得函式列表失敗: {str(e)}"})
+        return json.dumps({"status": "error", "message": f"Failed to retrieve function list: {str(e)}"})
 
 @server.tool(
     name="decompile_function",
-    description="使用 Ghidra 反編譯器將指定的記憶體位址 (如 0x140001000) 或函式名稱 (如 fcn.140001000, main) 反編譯為 C 語言虛擬碼。"
+    description="Use the Ghidra decompiler to decompile a specified memory address (e.g., 0x140001000) or function name (e.g., fcn.140001000, main) into C pseudocode."
 )
 def decompile_function(address_or_name: str) -> str:
     if CURRENT_RZ is None:
-        return json.dumps({"status": "error", "message": "尚未開啟並分析任何檔案，請先呼叫 open_and_analyze。"})
+        return json.dumps({"status": "error", "message": "No file has been opened and analyzed. Please call open_and_analyze first."})
     
     try:
         safe_target = sanitize_symbol_or_address(address_or_name)
@@ -379,7 +379,7 @@ def decompile_function(address_or_name: str) -> str:
         if not c_code or not c_code.strip():
             return json.dumps({
                 "status": "warning",
-                "message": f"位址/名稱 '{address_or_name}' 無法反編譯或無回傳程式碼。",
+                "message": f"Address/Name '{address_or_name}' cannot be decompiled or returned no code.",
                 "code": ""
             })
             
@@ -389,15 +389,15 @@ def decompile_function(address_or_name: str) -> str:
             "code": c_code
         }, ensure_ascii=False, indent=2)
     except Exception as e:
-        return json.dumps({"status": "error", "message": f"反編譯失敗: {str(e)}"})
+        return json.dumps({"status": "error", "message": f"Decompilation failed: {str(e)}"})
 
 @server.tool(
     name="disassemble_function",
-    description="取得指定函式/位址的組合語言 (Assembly) 反組譯輸出。"
+    description="Get the assembly disassembly output for a specified function/address."
 )
 def disassemble_function(address_or_name: str) -> str:
     if CURRENT_RZ is None:
-        return json.dumps({"status": "error", "message": "尚未開啟並分析任何檔案，請先呼叫 open_and_analyze。"})
+        return json.dumps({"status": "error", "message": "No file has been opened and analyzed. Please call open_and_analyze first."})
     
     try:
         safe_target = sanitize_symbol_or_address(address_or_name)
@@ -411,15 +411,15 @@ def disassemble_function(address_or_name: str) -> str:
             "disassembly": asm_code
         }, ensure_ascii=False, indent=2)
     except Exception as e:
-        return json.dumps({"status": "error", "message": f"反組譯失敗: {str(e)}"})
+        return json.dumps({"status": "error", "message": f"Disassembly failed: {str(e)}"})
 
 @server.tool(
     name="get_binary_info",
-    description="取得目前二進位檔案的詳細標頭、Sections (節區)、Imports (匯入表)、Exports (匯出表) 等資訊。"
+    description="Get detailed architectural information of the current binary file, including Headers, Sections, Imports, Exports, etc."
 )
 def get_binary_info() -> str:
     if CURRENT_RZ is None:
-        return json.dumps({"status": "error", "message": "尚未開啟並分析任何檔案，請先呼叫 open_and_analyze。"})
+        return json.dumps({"status": "error", "message": "No file has been opened and analyzed. Please call open_and_analyze first."})
     
     try:
         with suppress_stderr():
@@ -438,15 +438,15 @@ def get_binary_info() -> str:
             "sections": sections
         }, ensure_ascii=False, indent=2)
     except Exception as e:
-        return json.dumps({"status": "error", "message": f"取得二進位資訊失敗: {str(e)}"})
+        return json.dumps({"status": "error", "message": f"Failed to retrieve binary info: {str(e)}"})
 
 @server.tool(
     name="search_strings",
-    description="搜尋二進位檔案中出現的可讀字串。支援傳入 query 關鍵字過濾。"
+    description="Search for readable strings present in the binary file. Supports filtering with a query keyword."
 )
 def search_strings(query: str = "") -> str:
     if CURRENT_RZ is None:
-        return json.dumps({"status": "error", "message": "尚未開啟並分析任何檔案，請先呼叫 open_and_analyze。"})
+        return json.dumps({"status": "error", "message": "No file has been opened and analyzed. Please call open_and_analyze first."})
     
     try:
         with suppress_stderr():
@@ -470,15 +470,15 @@ def search_strings(query: str = "") -> str:
             "strings": matched[:100]
         }, ensure_ascii=False, indent=2)
     except Exception as e:
-        return json.dumps({"status": "error", "message": f"字串搜尋失敗: {str(e)}"})
+        return json.dumps({"status": "error", "message": f"String search failed: {str(e)}"})
 
 @server.tool(
     name="get_xrefs",
-    description="查找與分析指定函式或位址的交叉引用與呼叫依賴關係 (Xrefs)。支援傳入位址/名稱或全域查詢，回傳格式包含 [{'type': 'CALL', 'from': '0x401000', 'to': '0x402000'}]。"
+    description="Find and analyze cross-references (Xrefs) and call dependencies for a specified function or address. Supports passing an address/name or global query, returning format includes [{'type': 'CALL', 'from': '0x401000', 'to': '0x402000'}]."
 )
 def get_xrefs(address_or_name: str = "", xref_type: str = "ALL", limit: int = 100) -> str:
     if CURRENT_RZ is None:
-        return json.dumps({"status": "error", "message": "尚未開啟並分析任何檔案，請先呼叫 open_and_analyze。"})
+        return json.dumps({"status": "error", "message": "No file has been opened and analyzed. Please call open_and_analyze first."})
     
     try:
         with suppress_stderr():
@@ -527,15 +527,15 @@ def get_xrefs(address_or_name: str = "", xref_type: str = "ALL", limit: int = 10
             "xrefs": xrefs
         }, ensure_ascii=False, indent=2)
     except Exception as e:
-        return json.dumps({"status": "error", "message": f"查詢交叉引用失敗: {str(e)}"})
+        return json.dumps({"status": "error", "message": f"Cross-reference query failed: {str(e)}"})
 
 @server.tool(
     name="execute_rizin_command",
-    description="[高權限工具] 直接對 Rizin 執行自訂指令 (例如 `px 64 @ 0x140001000`, `afl` 等)。"
+    description="[High Privilege Tool] Execute custom commands directly in Rizin (e.g., `px 64 @ 0x140001000`, `afl`, etc.)."
 )
 def execute_rizin_command(command: str) -> str:
     if CURRENT_RZ is None:
-        return json.dumps({"status": "error", "message": "尚未開啟並分析任何檔案，請先呼叫 open_and_analyze。"})
+        return json.dumps({"status": "error", "message": "No file has been opened and analyzed. Please call open_and_analyze first."})
     
     try:
         with suppress_stderr():
@@ -547,25 +547,25 @@ def execute_rizin_command(command: str) -> str:
             "output": output
         }, ensure_ascii=False, indent=2)
     except Exception as e:
-        return json.dumps({"status": "error", "message": f"執行指令失敗: {str(e)}"})
+        return json.dumps({"status": "error", "message": f"Command execution failed: {str(e)}"})
 
 @server.tool(
     name="close_file",
-    description="關閉當前開啟的二進位檔案與 Rizin Session。"
+    description="Close the currently opened binary file and Rizin Session."
 )
 def close_file() -> str:
     global CURRENT_RZ, CURRENT_FILE_PATH
     if CURRENT_RZ is None:
-        return json.dumps({"status": "info", "message": "目前無開啟的檔案。"})
+        return json.dumps({"status": "info", "message": "No file currently open."})
     
     try:
         with suppress_stderr():
             CURRENT_RZ.quit()
         CURRENT_RZ = None
         CURRENT_FILE_PATH = None
-        return json.dumps({"status": "success", "message": "已成功關閉檔案與 Rizin Session。"})
+        return json.dumps({"status": "success", "message": "Successfully closed the file and Rizin Session."})
     except Exception as e:
-        return json.dumps({"status": "error", "message": f"關閉檔案失敗: {str(e)}"})
+        return json.dumps({"status": "error", "message": f"Failed to close file: {str(e)}"})
 
 def main():
     """Main entry point for running the server via CLI."""

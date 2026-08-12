@@ -76,7 +76,7 @@ class RizinFeatureExtractor(StaticFeatureExtractor):
             )
         super().__init__(hashes=hashes)
 
-        # 1. 預先快取檔頭、字串、匯入表、匯出表、節區、函式資訊
+        # 1. Pre-cache headers, strings, imports, exports, sections, and function info
         try:
             info_raw = self.rz.cmd("iIj")
             self.info = json.loads(info_raw) if info_raw else {}
@@ -116,7 +116,7 @@ class RizinFeatureExtractor(StaticFeatureExtractor):
         if self.max_functions > 0 and len(self.funcs) > self.max_functions:
             self.funcs = self.funcs[:self.max_functions]
 
-        # 高效 O(1) 索引雜湊對照表
+        # Highly efficient O(1) index hash table
         self.func_by_addr: Dict[int, Dict[str, Any]] = {}
         self.func_addresses: Set[int] = set()
         for f in self.funcs:
@@ -264,7 +264,7 @@ class RizinFeatureExtractor(StaticFeatureExtractor):
             total = len(self.funcs)
             if self.log_callback and (self.analyzed_func_count == 1 or self.analyzed_func_count % 30 == 0 or self.analyzed_func_count == total):
                 f_name = f.inner.get("name", "") if isinstance(f.inner, dict) else ""
-                self.log_callback(f"[PROGRESS] capa 特徵比對進度: [{self.analyzed_func_count}/{total}] 正在剖析 0x{int(f.address):x} ({f_name})...")
+                self.log_callback(f"[PROGRESS] capa feature matching progress: [{self.analyzed_func_count}/{total}] Profiling 0x{int(f.address):x} ({f_name})...")
 
             addr_int = int(f.address)
             try:
@@ -404,4 +404,3 @@ class RizinFeatureExtractor(StaticFeatureExtractor):
 
     def extract_instruction_features(self, f: FunctionHandle, bb: BBHandle, insn: InsnHandle) -> Generator[Tuple[Feature, Address], None, None]:
         yield from self.extract_insn_features(f, bb, insn)
-

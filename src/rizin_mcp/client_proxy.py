@@ -17,12 +17,12 @@ async def run_analysis_proxy():
         args=["run", "-m", "rizin_mcp.server"]
     )
     
-    print("[Proxy] 正在啟動 Rizin MCP Server...")
+    print("[Proxy] Starting Rizin MCP Server...")
     
     async with stdio_client(server_params) as (read_stream, write_stream):
         async with ClientSession(read_stream, write_stream) as mcp_session:
             await mcp_session.initialize()
-            print("[Proxy] MCP 會話初始化成功！")
+            print("[Proxy] MCP Session initialized successfully!")
             
             mcp_tools = await mcp_session.list_tools()
             nv_tools = [
@@ -39,16 +39,16 @@ async def run_analysis_proxy():
             messages = [
                 {
                     "role": "system", 
-                    "content": "你是一個頂尖的惡意程式分析專家。請善用 Rizin 與 capa 工具分析二進位檔案，逐步探索並找出關鍵威脅指標。"
+                    "content": "You are a top-tier malware analysis expert. Please effectively use Rizin and capa tools to analyze binary files, systematically explore, and uncover critical threat indicators."
                 },
                 {
                     "role": "user", 
-                    "content": "請幫我分析當前目錄下的 test_file.bin，先載入它，然後使用 capa 分析其惡意特徵並進行反編譯。"
+                    "content": "Please help me analyze test_file.bin in the current directory. Load it first, then use capa to analyze its malicious features and perform decompilation."
                 }
             ]
             
             while True:
-                print(f"\n[Proxy] 傳送對話與工具至 LLM ({MODEL_NAME})...")
+                print(f"\n[Proxy] Sending conversation and tools to LLM ({MODEL_NAME})...")
                 response = nv_client.chat.completions.create(
                     model=MODEL_NAME,
                     messages=messages,
@@ -60,7 +60,7 @@ async def run_analysis_proxy():
                 messages.append(response_message)
                 
                 if not response_message.tool_calls:
-                    print("\n[AI 最終分析報告]:")
+                    print("\n[Final AI Analysis Report]:")
                     print(response_message.content)
                     break
                     
@@ -68,15 +68,15 @@ async def run_analysis_proxy():
                     tool_name = tool_call.function.name
                     tool_args = json.loads(tool_call.function.arguments)
                     
-                    print(f"🤖 [AI 決策] 呼叫工具: {tool_name}")
-                    print(f"📦 [參數內容] {tool_args}")
+                    print(f"🤖 [AI Decision] Calling tool: {tool_name}")
+                    print(f"📦 [Argument contents] {tool_args}")
                     
                     server_result = await mcp_session.call_tool(tool_name, arguments=tool_args)
                     result_text = "".join([
                         content_item.text for content_item in server_result.content if hasattr(content_item, 'text')
                     ])
                     
-                    print(f"[Proxy] 執行成功 (結果長度: {len(result_text)} 字元)")
+                    print(f"[Proxy] Execution successful (Result length: {len(result_text)} chars)")
                     
                     messages.append({
                         "role": "tool",

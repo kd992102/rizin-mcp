@@ -1,25 +1,25 @@
-# Rizin MCP Server - Docker 部署指南
+# Rizin MCP Server - Docker Deployment Guide
 
-本資料夾包含了將 `rizin-mcp` 封裝為 Headless Docker 容器的所有設定檔。
+This directory contains all the configuration files for packaging `rizin-mcp` into a Headless Docker container.
 
-## 檔案結構
+## File Structure
 
-* `Dockerfile`: 基於 `python:3.12-slim` 建置，自動下載並配置 Linux 版 Rizin 二進位引擎。
-* `docker-compose.yml`: 預先配置持久化 Volume 掛載（`docker_analysis_cache`、`samples`、`capa-rules`）與容器資源限制。
-* `.dockerignore`: 排除 Windows 專用二進位檔與虛擬環境等非必要資源。
-* `README.md`: 本說明文件。
+* `Dockerfile`: Built on top of `python:3.12-slim`, it automatically downloads and configures the Linux version of the Rizin binary engine.
+* `docker-compose.yml`: Pre-configured persistent Volume mounts (`docker_analysis_cache`, `samples`, `capa-rules`) and container resource limits.
+* `.dockerignore`: Excludes Windows-specific binaries, virtual environments, and other non-essential resources.
+* `README.md`: This documentation file.
 
-## 快速開始
+## Quick Start
 
-### 1. 建置 Image
+### 1. Build Image
 
 ```bash
 docker compose -f docker/docker-compose.yml build
 ```
 
-### 2. 連接與使用 Stdio MCP Server
+### 2. Connect and Use Stdio MCP Server
 
-在 Claude Desktop 或 MCP Client 配置中加入：
+Add the following to your Claude Desktop or MCP Client configuration:
 
 ```json
 {
