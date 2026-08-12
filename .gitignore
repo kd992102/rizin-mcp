@@ -83,3 +83,9 @@ sigs/
 # OS specific files
 .DS_Store
 Thumbs.db
+
+# Local AI Agent Configs
+.agents/
+
+# Malware samples / test binaries
+samples/

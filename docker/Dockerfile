@@ -14,9 +14,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libssl3 \
     && rm -rf /var/lib/apt/lists/*
 
-# 複製並解壓 WSL2 預先編譯好的 Rizin v0.9.0 + rz-ghidra 反編譯插件包
-COPY docker/rizin-ghidra-v0.9.0-linux-x86_64.tar.gz /tmp/
-RUN tar -xzf /tmp/rizin-ghidra-v0.9.0-linux-x86_64.tar.gz -C / \
+# 下載並解壓預先編譯好的 Rizin v0.9.0 + rz-ghidra 反編譯插件包
+# TODO: 請將下方的 URL 替換為您在 GitHub Releases 上傳的檔案網址
+RUN curl -L -o /tmp/rizin-ghidra-v0.9.0-linux-x86_64.tar.gz "https://github.com/USERNAME/rizin-mcp/releases/download/v0.1.0/rizin-ghidra-v0.9.0-linux-x86_64.tar.gz" \
+    && tar -xzf /tmp/rizin-ghidra-v0.9.0-linux-x86_64.tar.gz -C / \
     && rm /tmp/rizin-ghidra-v0.9.0-linux-x86_64.tar.gz \
     && ldconfig
 
