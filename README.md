@@ -1,4 +1,4 @@
-# Rizin MCP Server 🚀
+# Rizin MCP Server
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python Version](https://img.shields.io/badge/python-3.12%2B-blue.svg)](https://www.python.org/)
@@ -9,7 +9,7 @@
 
 ---
 
-## 📁 專案架構 (Repository Structure)
+## 專案架構 (Repository Structure)
 
 ```text
 rizin-mcp/
@@ -29,7 +29,7 @@ rizin-mcp/
 
 ---
 
-## ⚡️ 快速開始 (Quick Start)
+## 快速開始 (Quick Start)
 
 ### 1. 安裝與準備
 使用 [uv](https://github.com/astral-sh/uv) 進行快速環境與依賴安裝：
@@ -47,7 +47,7 @@ uv run python -m rizin_mcp.server
 
 ---
 
-## 🌐 測試與整合
+## 測試與整合
 
 ### A. 使用 Anthropic 官方 Web UI (MCP Inspector) 測試
 ```bash
@@ -83,7 +83,7 @@ docker compose -f docker/docker-compose.yml up -d
 
 ---
 
-## 🛠️ 提供之 MCP Tools
+## 提供之 MCP Tools
 
 | 工具名稱 | 功能描述 |
 | :--- | :--- |
@@ -99,5 +99,5 @@ docker compose -f docker/docker-compose.yml up -d
 
 ---
 
-## 📄 License
+## License
 本專案採用 [MIT License](LICENSE) 授權。
