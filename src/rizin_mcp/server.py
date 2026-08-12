@@ -89,21 +89,27 @@ def log_info(msg: str):
 def suppress_stderr():
     """抑制 C 層與 stderr 雜訊輸出，同時保留 SAVED_CONSOLE_FD 給 log_info 使用"""
     global SAVED_CONSOLE_FD
+    saved_stderr_fd = None
+    devnull = None
     try:
         stderr_fd = sys.stderr.fileno()
         saved_stderr_fd = os.dup(stderr_fd)
         SAVED_CONSOLE_FD = saved_stderr_fd
         devnull = os.open(os.devnull, os.O_WRONLY)
         os.dup2(devnull, stderr_fd)
-        yield
     except Exception:
+        pass
+
+    try:
         yield
     finally:
         try:
-            if SAVED_CONSOLE_FD is not None:
-                os.dup2(SAVED_CONSOLE_FD, stderr_fd)
-                os.close(SAVED_CONSOLE_FD)
-                SAVED_CONSOLE_FD = None
+            if saved_stderr_fd is not None:
+                os.dup2(saved_stderr_fd, sys.stderr.fileno())
+                os.close(saved_stderr_fd)
+            if devnull is not None:
+                os.close(devnull)
+            SAVED_CONSOLE_FD = None
         except Exception:
             pass
 

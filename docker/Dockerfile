@@ -4,20 +4,21 @@
 
 FROM python:3.12-slim
 
-# 1. 安裝系統基本軟體包
+# 安裝系統基本軟體包
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     git \
     xz-utils \
     ca-certificates \
+    zlib1g \
+    libssl3 \
     && rm -rf /var/lib/apt/lists/*
 
-# 下載並安裝 Rizin Linux 官方 v0.9.0 二進位版本 (.tar.xz)
-RUN curl -sSL https://github.com/rizinorg/rizin/releases/download/v0.9.0/rizin-v0.9.0-static-x86_64.tar.xz | tar -xJ -C /usr/local --strip-components=1
-
-# 下載與安裝 rz-ghidra 反編譯插件 (匹配 Rizin v0.9.0)
-RUN mkdir -p /usr/local/lib/rizin/plugins && \
-    curl -sSL https://github.com/rizinorg/rz-ghidra/releases/download/v0.9.0/rz-ghidra-v0.9.0-x86_64.tar.gz | tar -xz -C /usr/local/lib/rizin/plugins || true
+# 複製並解壓 WSL2 預先編譯好的 Rizin v0.9.0 + rz-ghidra 反編譯插件包
+COPY docker/rizin-ghidra-v0.9.0-linux-x86_64.tar.gz /tmp/
+RUN tar -xzf /tmp/rizin-ghidra-v0.9.0-linux-x86_64.tar.gz -C / \
+    && rm /tmp/rizin-ghidra-v0.9.0-linux-x86_64.tar.gz \
+    && ldconfig
 
 # 安裝 Python 依賴管理工具 uv
 RUN pip install --no-cache-dir uv
@@ -35,7 +36,7 @@ RUN uv pip install --system -e .
 
 # 若本機無包含 capa-rules 規則庫，自動 Clone Mandiant 官方 capa-rules
 RUN if [ ! -d "/app/capa-rules" ] || [ -z "$(ls -A /app/capa-rules)" ]; then \
-        git clone --depth 1 https://github.com/mandiant/capa-rules /app/capa-rules; \
+    git clone --depth 1 https://github.com/mandiant/capa-rules /app/capa-rules; \
     fi
 
 # 3. 建立快取目錄與設定非 root 使用者 (提升容器執行安全性)
