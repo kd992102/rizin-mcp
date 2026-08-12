@@ -34,7 +34,7 @@ rizin-mcp/
 ### 1. Installation and Preparation
 Use [uv](https://github.com/astral-sh/uv) for fast environment setup and dependency installation:
 ```bash
-git clone https://github.com/your-username/rizin-mcp.git
+git clone https://github.com/kd992102/rizin-mcp.git
 cd rizin-mcp
 uv sync
 ```
