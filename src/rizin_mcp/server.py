@@ -4,9 +4,16 @@ import re
 import json
 import contextlib
 import subprocess
+import traceback
+import concurrent.futures
+from pathlib import Path
 from typing import Dict, Any, Optional
 import rzpipe
 from mcp.server import MCPServer
+
+import capa.rules
+import capa.main
+from rizin_mcp.rz_extractor import RizinFeatureExtractor
 
 # 自動定位與設定 Rizin, Ghidra Sleigh 與 Capa 規則路徑
 PACKAGE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -18,7 +25,6 @@ if os.path.exists(LOCAL_RIZIN_BIN):
 
 SLEIGH_PATH = os.path.join(PROJECT_ROOT, "rizin-win-installer-clang_cl-64", "lib", "rizin", "plugins", "rz_ghidra_sleigh")
 CAPA_RULES_PATH = os.path.join(PROJECT_ROOT, "capa-rules")
-SIGS_PATH = os.path.join(PROJECT_ROOT, "sigs")
 
 ALLOWED_BASE_DIR = os.path.abspath(os.getcwd())
 
@@ -58,9 +64,31 @@ def suppress_stderr():
         except Exception:
             pass
 
-# 全域 Session 物件
+# 全域 Session 物件與快取的 RuleSet
 CURRENT_RZ: Optional[rzpipe.open] = None
 CURRENT_FILE_PATH: Optional[str] = None
+CACHED_RULESET: Optional[capa.rules.RuleSet] = None
+
+def get_capa_ruleset() -> capa.rules.RuleSet:
+    """快取並載入 capa-rules 規則庫 (相容 capa 9.x pathlib.Path 需求)"""
+    global CACHED_RULESET
+    if CACHED_RULESET is None:
+        if not os.path.exists(CAPA_RULES_PATH):
+            raise FileNotFoundError(f"找不到 capa-rules 規則庫目錄: {CAPA_RULES_PATH}")
+        
+        rule_paths = []
+        for root, _, files in os.walk(CAPA_RULES_PATH):
+            for f in files:
+                if f.endswith((".yml", ".yaml")):
+                    rule_paths.append(Path(os.path.join(root, f)))
+        
+        if hasattr(capa.rules, "get_rules"):
+            CACHED_RULESET = capa.rules.get_rules(rule_paths)
+        else:
+            rules_list = [capa.rules.Rule.from_yaml_file(str(p)) for p in rule_paths]
+            CACHED_RULESET = capa.rules.RuleSet(rules_list)
+            
+    return CACHED_RULESET
 
 # 初始化 MCPServer
 server = MCPServer("rizin-analyzer")
@@ -116,66 +144,102 @@ def open_and_analyze(file_path: str, analyze_level: str = "aaa") -> str:
 
 @server.tool(
     name="run_capa_analysis",
-    description="使用 Mandiant capa 比對 capa-rules，自動分析識別二進位檔中的特徵能力 (Capabilities, MITRE ATT&CK 標籤, 匹配的記憶體位址/函式)。"
+    description="【極速 Rizin Extractor 模式】自動比對 capa-rules 識別惡意能力。支援指定 max_functions (預設500) 與 timeout_seconds 超時門檻 (預設30秒)。"
 )
-def run_capa_analysis(file_path: str = "") -> str:
-    global CURRENT_FILE_PATH
-    target = file_path if file_path else CURRENT_FILE_PATH
-    if not target:
+def run_capa_analysis(file_path: str = "", timeout_seconds: int = 30, max_functions: int = 500) -> str:
+    global CURRENT_RZ, CURRENT_FILE_PATH
+    
+    if file_path and file_path.strip():
+        safe_input = get_safe_path(file_path)
+        if CURRENT_FILE_PATH != safe_input:
+            open_res = open_and_analyze(safe_input)
+            if "error" in open_res:
+                return open_res
+
+    if CURRENT_RZ is None:
         return json.dumps({"status": "error", "message": "未指定檔案且目前無開啟的檔案，請先呼叫 open_and_analyze。"})
     
     try:
-        safe_path = get_safe_path(target)
-        cmd = [sys.executable, "-m", "capa.main", safe_path, "-j"]
-        if os.path.exists(CAPA_RULES_PATH):
-            cmd.extend(["-r", CAPA_RULES_PATH])
-        if os.path.exists(SIGS_PATH):
-            cmd.extend(["-s", SIGS_PATH])
-            
-        res = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="ignore")
+        rules = get_capa_ruleset()
         
-        if res.returncode != 0 and not res.stdout:
-            return json.dumps({"status": "error", "message": f"capa 分析失敗: {res.stderr}"})
+        def _execute_capa():
+            extractor = RizinFeatureExtractor(CURRENT_RZ, max_functions=max_functions)
+            return capa.main.find_capabilities(rules, extractor)
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(_execute_capa)
+            try:
+                capa_res = future.result(timeout=timeout_seconds)
+            except concurrent.futures.TimeoutError:
+                return json.dumps({
+                    "status": "warning",
+                    "message": f"capa 分析達到 {timeout_seconds} 秒超時限制保護門檻，已自動安全中斷以防止 MCP 連線通訊逾時。",
+                    "hint": "你可以嘗試設置較小的 max_functions (如 max_functions=200) 以提高檢索速度。"
+                }, ensure_ascii=False, indent=2)
             
-        try:
-            capa_data = json.loads(res.stdout)
-            rules_matched = capa_data.get("rules", {})
+        result_capabilities = []
+        
+        rules_matches = {}
+        if hasattr(capa_res, "matches"):
+            rules_matches = capa_res.matches
+        elif hasattr(capa_res, "rules"):
+            rules_matches = capa_res.rules
+        elif isinstance(capa_res, tuple) and len(capa_res) > 0:
+            rules_matches = capa_res[0]
+        elif isinstance(capa_res, dict):
+            rules_matches = capa_res
+
+        for rule_name, rule_matches in rules_matches.items():
+            rule = rules[rule_name]
+            meta = rule.meta
             
-            capabilities = []
-            for rule_name, rule_info in rules_matched.items():
-                meta = rule_info.get("meta", {})
-                matches = rule_info.get("matches", [])
-                
-                addresses = []
-                for match in matches:
-                    if isinstance(match, list) and len(match) > 0:
-                        loc = match[0]
-                        if isinstance(loc, dict) and "value" in loc:
-                            val = loc["value"]
-                            if isinstance(val, int):
-                                addresses.append(hex(val))
-                            else:
-                                addresses.append(str(val))
-                            
-                capabilities.append({
-                    "rule": rule_name,
-                    "namespace": meta.get("namespace", ""),
-                    "scopes": meta.get("scopes", []),
-                    "attack": meta.get("attack", []),
-                    "mbc": meta.get("mbc", []),
-                    "matched_addresses": addresses[:5]
-                })
-                
-            return json.dumps({
-                "status": "success",
-                "file_path": safe_path,
-                "total_capabilities": len(capabilities),
-                "capabilities": capabilities
-            }, ensure_ascii=False, indent=2)
-        except Exception:
-            return json.dumps({"status": "success", "raw_output": res.stdout[:4000]})
+            addresses = []
+            locs = []
+            if hasattr(rule_matches, "locations"):
+                locs = rule_matches.locations
+            elif isinstance(rule_matches, (tuple, list)):
+                locs = rule_matches
+            elif isinstance(rule_matches, dict):
+                locs = rule_matches.get("locations", [])
+
+            for match_item in locs:
+                addr_val = None
+                if isinstance(match_item, tuple) and len(match_item) > 0:
+                    addr_val = match_item[0]
+                else:
+                    addr_val = match_item
+                    
+                if hasattr(addr_val, "value"):
+                    v = addr_val.value
+                    if isinstance(v, int):
+                        addresses.append(hex(v))
+                    elif v is not None and "Result object" not in str(v):
+                        addresses.append(str(v))
+                elif isinstance(addr_val, int):
+                    addresses.append(hex(addr_val))
+                elif isinstance(addr_val, str) and "Result object" not in addr_val:
+                    addresses.append(addr_val)
+                    
+            result_capabilities.append({
+                "rule": rule_name,
+                "namespace": meta.get("namespace", ""),
+                "scopes": meta.get("scopes", []),
+                "attack": meta.get("attack", []),
+                "mbc": meta.get("mbc", []),
+                "matched_addresses": addresses[:5]
+            })
+            
+        return json.dumps({
+            "status": "success",
+            "mode": "Rizin Feature Extractor (Ultra Fast)",
+            "file_path": CURRENT_FILE_PATH,
+            "total_capabilities": len(result_capabilities),
+            "capabilities": result_capabilities
+        }, ensure_ascii=False, indent=2)
+
     except Exception as e:
-        return json.dumps({"status": "error", "message": f"執行 capa 發生例外: {str(e)}"})
+        tb = traceback.format_exc()
+        return json.dumps({"status": "error", "message": f"capa 分析失敗: {str(e)}", "traceback": tb}, ensure_ascii=False, indent=2)
 
 @server.tool(
     name="list_functions",
@@ -346,7 +410,7 @@ def execute_rizin_command(command: str) -> str:
 
 @server.tool(
     name="close_file",
-    description="關閉當前開啟的二進位檔案與 Rizin 分析 Session。"
+    description="關閉當前開啟的二進位檔案與 Rizin Session。"
 )
 def close_file() -> str:
     global CURRENT_RZ, CURRENT_FILE_PATH
