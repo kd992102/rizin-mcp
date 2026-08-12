@@ -15,8 +15,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Download and extract the pre-compiled Rizin v0.9.0 + rz-ghidra decompiler plugin
-# TODO: Replace the URL below with the URL of the file uploaded to your GitHub Releases
-RUN curl -L -o /tmp/rizin-ghidra-v0.9.0-linux-x86_64.tar.gz "https://github.com/USERNAME/rizin-mcp/releases/download/v0.1.0/rizin-ghidra-v0.9.0-linux-x86_64.tar.gz" \
+RUN curl -L -o /tmp/rizin-ghidra-v0.9.0-linux-x86_64.tar.gz "https://github.com/kd992102/rizin-mcp/releases/download/v0.1.0/rizin-ghidra-v0.9.0-linux-x86_64.tar.gz" \
     && tar -xzf /tmp/rizin-ghidra-v0.9.0-linux-x86_64.tar.gz -C / \
     && rm /tmp/rizin-ghidra-v0.9.0-linux-x86_64.tar.gz \
     && ldconfig
