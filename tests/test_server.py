@@ -1,7 +1,14 @@
 """Basic test suite for Rizin MCP Server."""
 
+import os
 import unittest
-from rizin_mcp.server import server, sanitize_symbol_or_address
+from rizin_mcp.server import (
+    server,
+    sanitize_symbol_or_address,
+    get_file_sha256,
+    get_cache_file_path,
+    ANALYSIS_CACHE_DIR,
+)
 
 class TestRizinMCPServer(unittest.TestCase):
     def test_server_initialization(self):
@@ -18,5 +25,15 @@ class TestRizinMCPServer(unittest.TestCase):
         with self.assertRaises(ValueError):
             sanitize_symbol_or_address("main && whoami")
 
+    def test_cache_file_path_generation(self):
+        notepad_path = r"C:\Windows\SysWOW64\notepad.exe"
+        if os.path.exists(notepad_path):
+            sha256 = get_file_sha256(notepad_path)
+            self.assertEqual(len(sha256), 64)
+            cache_path = get_cache_file_path(notepad_path)
+            self.assertTrue(cache_path.startswith(ANALYSIS_CACHE_DIR))
+            self.assertTrue(cache_path.endswith("_full.json"))
+
 if __name__ == "__main__":
     unittest.main()
+

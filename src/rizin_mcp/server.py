@@ -2,6 +2,7 @@ import os
 import sys
 import re
 import json
+import hashlib
 import contextlib
 import subprocess
 import traceback
@@ -26,7 +27,27 @@ if os.path.exists(LOCAL_RIZIN_BIN):
 SLEIGH_PATH = os.path.join(PROJECT_ROOT, "rizin-win-installer-clang_cl-64", "lib", "rizin", "plugins", "rz_ghidra_sleigh")
 CAPA_RULES_PATH = os.path.join(PROJECT_ROOT, "capa-rules")
 
+# 分析結果持久化快取目錄
+ANALYSIS_CACHE_DIR = os.path.join(PROJECT_ROOT, ".analysis_cache")
+os.makedirs(ANALYSIS_CACHE_DIR, exist_ok=True)
+
 ALLOWED_BASE_DIR = os.path.abspath(os.getcwd())
+
+
+def get_file_sha256(file_path: str) -> str:
+    """計算檔案的 SHA-256 雜湊值作為快取 Key"""
+    h = hashlib.sha256()
+    with open(file_path, "rb") as f:
+        while chunk := f.read(65536):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def get_cache_file_path(file_path: str) -> str:
+    """根據檔案 SHA-256 雜湊生成快取檔案路徑"""
+    file_sha256 = get_file_sha256(file_path)
+    cache_filename = f"{file_sha256}_full.json"
+    return os.path.join(ANALYSIS_CACHE_DIR, cache_filename)
 
 def get_safe_path(user_path: str) -> str:
     """驗證與轉換安全的檔案路徑，防止 Path Traversal 攻擊"""
@@ -45,12 +66,33 @@ def sanitize_symbol_or_address(identifier: str) -> str:
         raise ValueError(f"安全警報：不合法或包含潛在危險字元的位址/符號名稱: '{identifier}'")
     return cleaned
 
+SAVED_CONSOLE_FD: Optional[int] = None
+
+
+def log_info(msg: str):
+    """將乾淨透明的 Log 寫入真實主控台，讓使用者在 Terminal 或 Inspector 中及時觀察進度"""
+    formatted = f"[rizin-mcp] {msg}\n"
+    if SAVED_CONSOLE_FD is not None:
+        try:
+            os.write(SAVED_CONSOLE_FD, formatted.encode("utf-8", errors="ignore"))
+            return
+        except Exception:
+            pass
+    try:
+        sys.stderr.write(formatted)
+        sys.stderr.flush()
+    except Exception:
+        pass
+
+
 @contextlib.contextmanager
 def suppress_stderr():
-    """抑制 C 層與 stderr 輸出，確保 Stdio MCP 通訊管道純淨"""
+    """抑制 C 層與 stderr 雜訊輸出，同時保留 SAVED_CONSOLE_FD 給 log_info 使用"""
+    global SAVED_CONSOLE_FD
     try:
         stderr_fd = sys.stderr.fileno()
         saved_stderr_fd = os.dup(stderr_fd)
+        SAVED_CONSOLE_FD = saved_stderr_fd
         devnull = os.open(os.devnull, os.O_WRONLY)
         os.dup2(devnull, stderr_fd)
         yield
@@ -58,9 +100,10 @@ def suppress_stderr():
         yield
     finally:
         try:
-            os.dup2(saved_stderr_fd, stderr_fd)
-            os.close(saved_stderr_fd)
-            os.close(devnull)
+            if SAVED_CONSOLE_FD is not None:
+                os.dup2(SAVED_CONSOLE_FD, stderr_fd)
+                os.close(SAVED_CONSOLE_FD)
+                SAVED_CONSOLE_FD = None
         except Exception:
             pass
 
@@ -101,8 +144,11 @@ def open_and_analyze(file_path: str, analyze_level: str = "aaa") -> str:
     global CURRENT_RZ, CURRENT_FILE_PATH
     try:
         safe_path = get_safe_path(file_path)
+        filename = os.path.basename(safe_path)
+        log_info(f"[INFO] 正在載入二進位檔案: {filename}")
         
         if CURRENT_RZ is not None:
+            log_info("[INFO] 關閉前一次 Rizin Session...")
             try:
                 CURRENT_RZ.quit()
             except Exception:
@@ -110,13 +156,16 @@ def open_and_analyze(file_path: str, analyze_level: str = "aaa") -> str:
             CURRENT_RZ = None
             CURRENT_FILE_PATH = None
         
+        import time
+        t0 = time.time()
+        level = analyze_level if analyze_level in ["a", "aa", "aaa", "aaaa"] else "aaa"
+        log_info(f"[INFO] 啟動 Rizin 分析引擎 (分析層級: '{level}')...")
+        
         with suppress_stderr():
             rz = rzpipe.open(safe_path, flags=["-e", "bin.cache=true"])
             if os.path.exists(SLEIGH_PATH):
                 rz.cmd(f"e ghidra.sleighhome={SLEIGH_PATH}")
             rz.cmd("e log.level=0")
-            
-            level = analyze_level if analyze_level in ["a", "aa", "aaa", "aaaa"] else "aaa"
             rz.cmd(level)
             
             info_raw = rz.cmd("iIj")
@@ -125,12 +174,15 @@ def open_and_analyze(file_path: str, analyze_level: str = "aaa") -> str:
             funcs_raw = rz.cmd("aflj")
             funcs = json.loads(funcs_raw) if funcs_raw else []
         
+        t1 = time.time()
         CURRENT_RZ = rz
         CURRENT_FILE_PATH = safe_path
         
+        log_info(f"[SUCCESS] Rizin 分析完成！共識別出 {len(funcs)} 個函式，歷時 {t1 - t0:.2f} 秒。")
+        
         return json.dumps({
             "status": "success",
-            "message": f"成功載入並分析檔案: {os.path.basename(safe_path)}",
+            "message": f"成功載入並分析檔案: {filename}",
             "file_path": safe_path,
             "architecture": info.get("arch"),
             "format": info.get("bintype"),
@@ -140,42 +192,49 @@ def open_and_analyze(file_path: str, analyze_level: str = "aaa") -> str:
         }, ensure_ascii=False, indent=2)
 
     except Exception as e:
+        log_info(f"[ERROR] 分析失敗: {str(e)}")
         return json.dumps({"status": "error", "message": f"分析失敗: {str(e)}"}, ensure_ascii=False)
 
 @server.tool(
     name="run_capa_analysis",
-    description="【極速 Rizin Extractor 模式】自動比對 capa-rules 識別惡意能力。支援指定 max_functions (預設500) 與 timeout_seconds 超時門檻 (預設30秒)。"
+    description="【極速 Rizin Extractor 模式】利用已由 open_and_analyze 分析好的 Rizin Session 比對 capa-rules 識別惡意能力。必須先呼叫 open_and_analyze。會完整分析所有函式直至完成，自動支援磁碟快取，若已分析過直接讀檔回傳。"
 )
-def run_capa_analysis(file_path: str = "", timeout_seconds: int = 30, max_functions: int = 500) -> str:
+def run_capa_analysis(force_reanalysis: bool = False) -> str:
     global CURRENT_RZ, CURRENT_FILE_PATH
     
-    if file_path and file_path.strip():
-        safe_input = get_safe_path(file_path)
-        if CURRENT_FILE_PATH != safe_input:
-            open_res = open_and_analyze(safe_input)
-            if "error" in open_res:
-                return open_res
+    if CURRENT_RZ is None or not CURRENT_FILE_PATH:
+        log_info("[ERROR] 尚未開啟並分析任何檔案！請先呼叫 open_and_analyze。")
+        return json.dumps({"status": "error", "message": "尚未開啟並分析任何檔案，請先呼叫 open_and_analyze 開啟檔案。"}, ensure_ascii=False)
 
-    if CURRENT_RZ is None:
-        return json.dumps({"status": "error", "message": "未指定檔案且目前無開啟的檔案，請先呼叫 open_and_analyze。"})
-    
+    target_path = CURRENT_FILE_PATH
+    filename = os.path.basename(target_path)
+    log_info(f"[INFO] 開始準備對 {filename} 進行 capa 惡意能力特徵比對...")
+
+    # 1. 檢查快取：若未指定強制重新分析，先檢查快取檔
+    cache_file = get_cache_file_path(target_path)
+    cache_name = os.path.basename(cache_file)
+    log_info(f"[CACHE] 檢查磁碟快取檔 ({cache_name})...")
+    if not force_reanalysis and os.path.exists(cache_file):
+        try:
+            log_info(f"[CACHE] 成功命中磁碟快取 ({cache_name})！直接讀取分析結果...")
+            with open(cache_file, "r", encoding="utf-8") as f:
+                cached_data = json.load(f)
+            cached_data["cached"] = True
+            cached_data["message"] = "讀取快取分析結果成功 (Cached)"
+            return json.dumps(cached_data, ensure_ascii=False, indent=2)
+        except Exception:
+            log_info("[WARN] 快取檔讀取異常，將重新進行比對...")
+
+    # 2. 使用由 open_and_analyze 建立的 CURRENT_RZ 進行完整 capa 特徵比對 (無限制分析所有函式直至完成)
     try:
+        import time
+        t0 = time.time()
+        log_info("[INFO] 載入 capa 規則庫與初始化 RizinFeatureExtractor (無數量限制模式)...")
         rules = get_capa_ruleset()
         
-        def _execute_capa():
-            extractor = RizinFeatureExtractor(CURRENT_RZ, max_functions=max_functions)
-            return capa.main.find_capabilities(rules, extractor)
-
-        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-            future = executor.submit(_execute_capa)
-            try:
-                capa_res = future.result(timeout=timeout_seconds)
-            except concurrent.futures.TimeoutError:
-                return json.dumps({
-                    "status": "warning",
-                    "message": f"capa 分析達到 {timeout_seconds} 秒超時限制保護門檻，已自動安全中斷以防止 MCP 連線通訊逾時。",
-                    "hint": "你可以嘗試設置較小的 max_functions (如 max_functions=200) 以提高檢索速度。"
-                }, ensure_ascii=False, indent=2)
+        with suppress_stderr():
+            extractor = RizinFeatureExtractor(CURRENT_RZ, path=Path(target_path), max_functions=0, log_callback=log_info)
+            capa_res = capa.main.find_capabilities(rules, extractor)
             
         result_capabilities = []
         
@@ -229,17 +288,36 @@ def run_capa_analysis(file_path: str = "", timeout_seconds: int = 30, max_functi
                 "matched_addresses": addresses[:5]
             })
             
-        return json.dumps({
+        t1 = time.time()
+        log_info(f"[SUCCESS] capa 惡意能力特徵比對完成！共比對出 {len(result_capabilities)} 項惡意能力，歷時 {t1 - t0:.2f} 秒。")
+
+        response_payload = {
             "status": "success",
-            "mode": "Rizin Feature Extractor (Ultra Fast)",
-            "file_path": CURRENT_FILE_PATH,
+            "cached": False,
+            "mode": "Rizin Feature Extractor (Full Complete Mode)",
+            "file_path": target_path,
             "total_capabilities": len(result_capabilities),
             "capabilities": result_capabilities
-        }, ensure_ascii=False, indent=2)
+        }
+
+        # 3. 將分析結果寫入磁碟快取
+        try:
+            with open(cache_file, "w", encoding="utf-8") as f:
+                json.dump(response_payload, f, ensure_ascii=False, indent=2)
+            log_info(f"[CACHE] 已將分析結果寫入磁碟快取檔: {cache_name}")
+        except Exception as e:
+            log_info(f"[WARN] 寫入分析快取失敗: {e}")
+
+        return json.dumps(response_payload, ensure_ascii=False, indent=2)
 
     except Exception as e:
         tb = traceback.format_exc()
+        log_info(f"[ERROR] capa 分析失敗: {str(e)}")
         return json.dumps({"status": "error", "message": f"capa 分析失敗: {str(e)}", "traceback": tb}, ensure_ascii=False, indent=2)
+
+
+
+
 
 @server.tool(
     name="list_functions",

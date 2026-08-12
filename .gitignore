@@ -64,6 +64,7 @@ env/
 functions.json
 decompiled_5.json
 *.log
+.analysis_cache/
 
 # Third-party tools & Submodules (Local binaries & rules)
 rizin-win-installer-clang_cl-64/
