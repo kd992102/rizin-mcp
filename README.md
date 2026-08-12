@@ -17,10 +17,11 @@ rizin-mcp/
 │   └── rizin_mcp/
 │       ├── __init__.py
 │       ├── server.py          # Core logic for the MCP Server
-│       ├── rz_extractor.py    # Efficient Rizin feature extractor (RizinFeatureExtractor)
-│       └── client_proxy.py    # Client proxy for multi-turn tool-calling tests
+│       └── rz_extractor.py    # Efficient Rizin feature extractor (RizinFeatureExtractor)
+├── examples/                  # Standalone example/dev-time scripts (not part of the installed package)
+│   └── client_proxy.py        # Manual client proxy for multi-turn tool-calling tests
 ├── docker/                    # Docker deployment configuration (Dockerfile, compose)
-├── tests/                     # Unit tests and validation scripts
+├── tests/                     # Unit tests (pytest) and validation scripts
 ├── .gitignore                 # Git ignore configuration
 ├── LICENSE                    # MIT License
 ├── README.md                  # Project documentation
@@ -88,13 +89,19 @@ docker compose -f docker/docker-compose.yml up -d
 | Tool Name | Description |
 | :--- | :--- |
 | `open_and_analyze` | Open a binary file and perform automatic analysis (`aaa`). |
-| `run_capa_analysis` | Use Mandiant capa against capa-rules to identify binary capabilities and feature addresses (supports independent caching). |
+| `run_capa_analysis` | Use Mandiant capa against capa-rules to identify binary capabilities and feature addresses. Runs as a background job (returns a `job_id` immediately) with disk caching; poll with `get_capa_status`. |
+| `get_capa_status` | Poll a background `run_capa_analysis` job by `job_id` for its running/success/error status and, once finished, the full result. |
 | `list_functions` | List all function names, addresses, and sizes (supports keyword filtering). |
-| `decompile_function` | Call RzGhidra (pdg) to decompile a specific address/function into C code. |
+| `decompile_function` | Call RzGhidra (pdg) to decompile a specific address/function into C code (Ghidra's `// WARNING:` noise is split out into a separate `warnings` field). |
 | `disassemble_function` | Get the assembly disassembly for a specific function. |
 | `get_binary_info` | Get architectural information such as Headers, Sections, Imports, and Exports. |
+| `list_resources` | List every entry in the PE resource table (.rsrc), flagging when a resource's declared type doesn't match its actual content (magic bytes) - a strong signal for embedded/disguised files. |
+| `extract_resource` | Extract the raw bytes of a specific PE resource by type + ID, base64-encoded. |
+| `search_imports` | Search the import table by function name and/or DLL keyword, returning structured JSON. |
 | `search_strings` | Search for readable strings present in the binary file. |
-| `execute_rizin_command` | Execute custom Rizin commands (e.g., `px 64 @ 0x...`). |
+| `get_xrefs` | Find cross-references/call dependencies for a function or address. |
+| `find_import_callers` | Given an imported function name, list every call site and the function it belongs to, in one call. |
+| `execute_rizin_command` | Execute custom, read-only Rizin commands (e.g., `px 64 @ 0x...`), with output pagination via `offset`/`limit`. Shell-escape (`!`), file open/switch (`o*`), and write (`w*`) commands are blocked. |
 | `close_file` | Safely close the currently opened file and session. |
 
 ---

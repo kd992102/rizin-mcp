@@ -12,12 +12,15 @@ dependencies = [
     "flare-capa>=9.4.0",
     "mcp[cli]>=2.0.0",
     "openai>=2.54.0",
+    "pefile>=2023.2.7",
     "rzpipe>=0.6.2",
 ]
 
 [project.scripts]
 rizin-mcp = "rizin_mcp.server:main"
-rizin-mcp-proxy = "rizin_mcp.client_proxy:main"
+# rizin-mcp-proxy was removed: client_proxy.py moved to examples/ (it's a manual dev-time
+# tool-calling test script with a hardcoded API base_url/system prompt, not a public feature of
+# this package) - run it directly with `uv run python examples/client_proxy.py` instead.
 
 [build-system]
 requires = ["uv_build>=0.12.2,<0.13.0"]

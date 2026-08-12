@@ -7,6 +7,8 @@ services:
     restart: unless-stopped
     stdin_open: true # Keep Stdio MCP communication channel open
     tty: true
+    ports:
+      - "6273:6274"
     security_opt:
       - no-new-privileges:true
     read_only: false
