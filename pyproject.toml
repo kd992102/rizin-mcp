@@ -1,0 +1,27 @@
+[project]
+name = "rizin-mcp"
+version = "0.1.0"
+description = "Model Context Protocol (MCP) Server for Rizin binary disassembler & Ghidra decompiler with Mandiant capa integration."
+readme = "README.md"
+authors = [
+    { name = "kd992102", email = "kd992102@gmail.com" }
+]
+requires-python = ">=3.12"
+license = { text = "MIT" }
+dependencies = [
+    "flare-capa>=9.4.0",
+    "mcp[cli]>=2.0.0",
+    "openai>=2.54.0",
+    "rzpipe>=0.6.2",
+]
+
+[project.scripts]
+rizin-mcp = "rizin_mcp.server:main"
+rizin-mcp-proxy = "rizin_mcp.client_proxy:main"
+
+[build-system]
+requires = ["uv_build>=0.12.2,<0.13.0"]
+build-backend = "uv_build"
+
+[tool.uv]
+package = true
