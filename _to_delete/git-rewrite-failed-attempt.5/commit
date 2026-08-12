@@ -1,0 +1,5 @@
+tree 61d3537efb1ec73e5ad15b87b62cb975eb625244
+author kd992102 <kd992102@gmail.com> 1786506206 +0800
+committer kd992102 <kd992102@gmail.com> 1786506206 +0800
+
+feat: initial release of rizin-mcp with Ghidra decompiler and Mandiant capa integration
