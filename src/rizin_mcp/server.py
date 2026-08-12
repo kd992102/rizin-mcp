@@ -7,6 +7,11 @@ import contextlib
 import subprocess
 import traceback
 import concurrent.futures
+import zipfile
+import tarfile
+import gzip
+import shutil
+import tempfile
 from pathlib import Path
 from typing import Dict, Any, Optional
 import rzpipe
@@ -58,6 +63,80 @@ def get_safe_path(user_path: str) -> str:
             return abs_user_path
         raise FileNotFoundError(f"找不到指定的檔案: {user_path}")
     return target_path
+
+def check_samples_restriction(file_path: str):
+    """檢查 samples 目錄規範：如果路徑在 samples 目錄下，限定只能放置壓縮檔"""
+    abs_path = os.path.abspath(file_path).replace("\\", "/")
+    samples_dir = os.path.abspath(os.path.join(PROJECT_ROOT, "samples")).replace("\\", "/")
+    
+    if abs_path.startswith(samples_dir) or "/samples/" in abs_path or abs_path.endswith("/samples"):
+        archive_exts = (".zip", ".tar.gz", ".tgz", ".tar.bz2", ".tbz2", ".tar", ".gz", ".bz2", ".7z", ".rar")
+        if not any(abs_path.lower().endswith(ext) for ext in archive_exts):
+            raise ValueError(
+                "[ERROR] 安全規範限制：samples 目錄中僅允許放置壓縮檔案 (.zip, .tar.gz, .7z, .rar)！\n"
+                "為防止惡意二進位檔案誤觸發，請先將樣本打包為壓縮檔（可設密碼 infected）後再放入 samples 目錄中。"
+            )
+
+TEMP_EXTRACT_DIR: Optional[tempfile.TemporaryDirectory] = None
+
+def extract_archive_if_needed(file_path: str) -> str:
+    """若是壓縮檔 (.zip, .tar.gz 等)，自動解壓縮並回傳解壓後的目標二進位檔案路徑"""
+    global TEMP_EXTRACT_DIR
+    ext = file_path.lower()
+    
+    archive_exts = (".zip", ".tar.gz", ".tgz", ".tar.bz2", ".tbz2", ".tar", ".gz", ".bz2")
+    if not any(ext.endswith(ae) for ae in archive_exts):
+        return file_path
+
+    log_info(f"[INFO] 檢測到壓縮檔 ({os.path.basename(file_path)})，開始自動解壓縮...")
+    
+    if TEMP_EXTRACT_DIR is not None:
+        try:
+            TEMP_EXTRACT_DIR.cleanup()
+        except Exception:
+            pass
+    TEMP_EXTRACT_DIR = tempfile.TemporaryDirectory(prefix="rizin_extracted_")
+    out_dir = TEMP_EXTRACT_DIR.name
+
+    extracted_files = []
+
+    # 1. ZIP
+    if ext.endswith(".zip"):
+        with zipfile.ZipFile(file_path, "r") as zf:
+            pwd = b"infected"
+            try:
+                zf.extractall(out_dir, pwd=pwd)
+            except Exception:
+                try:
+                    zf.extractall(out_dir)
+                except Exception as e:
+                    raise ValueError(f"ZIP 解壓縮失敗 (若有密碼請確認是否為 'infected'): {e}")
+            extracted_files = [os.path.join(out_dir, name) for name in zf.namelist() if not name.endswith("/")]
+
+    # 2. TAR / TAR.GZ / TAR.BZ2
+    elif any(ext.endswith(te) for te in (".tar.gz", ".tgz", ".tar.bz2", ".tbz2", ".tar")):
+        with tarfile.open(file_path, "r:*") as tf:
+            tf.extractall(out_dir)
+            extracted_files = [os.path.join(out_dir, member.name) for member in tf.getmembers() if member.isfile()]
+
+    # 3. Single GZ / BZ2
+    elif ext.endswith(".gz") and not ext.endswith(".tar.gz"):
+        out_target = os.path.join(out_dir, os.path.basename(file_path)[:-3])
+        with gzip.open(file_path, "rb") as f_in, open(out_target, "wb") as f_out:
+            shutil.copyfileobj(f_in, f_out)
+        extracted_files = [out_target]
+
+    if not extracted_files:
+        raise ValueError(f"壓縮檔中未找到任何可分析的二進位檔案: {file_path}")
+
+    target = extracted_files[0]
+    for f in extracted_files:
+        if f.lower().endswith((".exe", ".dll", ".so", ".bin", ".elf", ".sys", ".drv")):
+            target = f
+            break
+
+    log_info(f"[SUCCESS] 解壓縮完成，選擇目標檔案進行分析: {os.path.basename(target)}")
+    return target
 
 def sanitize_symbol_or_address(identifier: str) -> str:
     """清理位址或符號名稱，防止在 Rizin 命令列中注入多重指令 (Command Injection)"""
@@ -144,7 +223,10 @@ def open_and_analyze(file_path: str, analyze_level: str = "aaa") -> str:
     global CURRENT_RZ, CURRENT_FILE_PATH
     try:
         safe_path = get_safe_path(file_path)
-        filename = os.path.basename(safe_path)
+        check_samples_restriction(safe_path)
+        target_path = extract_archive_if_needed(safe_path)
+        
+        filename = os.path.basename(target_path)
         log_info(f"[INFO] 正在載入二進位檔案: {filename}")
         
         if CURRENT_RZ is not None:
@@ -162,7 +244,7 @@ def open_and_analyze(file_path: str, analyze_level: str = "aaa") -> str:
         log_info(f"[INFO] 啟動 Rizin 分析引擎 (分析層級: '{level}')...")
         
         with suppress_stderr():
-            rz = rzpipe.open(safe_path, flags=["-e", "bin.cache=true"])
+            rz = rzpipe.open(target_path, flags=["-e", "bin.cache=true"])
             if os.path.exists(SLEIGH_PATH):
                 rz.cmd(f"e ghidra.sleighhome={SLEIGH_PATH}")
             rz.cmd("e log.level=0")

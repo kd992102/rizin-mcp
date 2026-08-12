@@ -13,8 +13,8 @@ services:
       - no-new-privileges:true
     read_only: false
     volumes:
-      # 掛載持久化分析快取
-      - ../.analysis_cache:/app/.analysis_cache
+      # 使用 Docker 獨立 Named Volume (不與本機 .analysis_cache 共用)
+      - docker_analysis_cache:/app/.analysis_cache
       # 掛載本地樣本分析目錄
       - ../samples:/samples
       # 掛載 capa 規則庫 (便於動態更新規則)
@@ -24,3 +24,6 @@ services:
         limits:
           cpus: '1.0'
           memory: 1G
+
+volumes:
+  docker_analysis_cache:
