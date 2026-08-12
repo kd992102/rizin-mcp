@@ -34,9 +34,9 @@ LOCAL_RIZIN_BIN = os.path.abspath("rizin-win-installer-clang_cl-64/bin")
 if os.path.exists(LOCAL_RIZIN_BIN):
     os.environ["PATH"] = LOCAL_RIZIN_BIN + os.path.pathsep + os.environ.get("PATH", "")
 
-target_bin = r"C:\Users\kd992\OneDrive\桌面\resume\teamt5\m2\m2.docx.exe"
+target_bin = r"C:\Windows\SysWOW64\notepad.exe"
 if not os.path.exists(target_bin):
-    target_bin = r"C:\Windows\SysWOW64\notepad.exe"
+    target_bin = r"C:\Windows\System32\notepad.exe"
 
 rules_path = "capa-rules"
 

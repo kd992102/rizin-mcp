@@ -29,7 +29,7 @@ COPY capa-rules/ ./capa-rules/
 # 透過 uv 安裝專案套件
 RUN uv pip install --system -e .
 
-# 3. 建立快取目錄與設定非 root 使用者 (提升惡意程式分析安全性)
+# 3. 建立快取目錄與設定非 root 使用者 (提升容器執行安全性)
 RUN mkdir -p /app/.analysis_cache /samples && \
     useradd -m -u 1000 appuser && \
     chown -R appuser:appuser /app /samples

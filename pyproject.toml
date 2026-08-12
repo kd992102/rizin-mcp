@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Model Context Protocol (MCP) Server for Rizin binary disassembler & Ghidra decompiler with Mandiant capa integration."
 readme = "README.md"
 authors = [
-    { name = "kd992102", email = "kd992102@gmail.com" }
+    { name = "Rizin MCP Maintainers" }
 ]
 requires-python = ">=3.12"
 license = { text = "MIT" }
